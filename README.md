@@ -1,106 +1,130 @@
-# Activity 15: Loops in Assemby
+# Activity 23: OpenMP Application Example
 ## Put your name(s) here
 
-In this activity, you will explore how comparisons and jumps can implement simple loops. You will:
-- Experiment with C code containing while and for loops and examine the generated assembly code
-- Examine how nested loops are created
-- Compare the assembly language produced by gcc for isolated functions against the lower-level assembly language produced by disassembling the executable
+In this activity, you will experiment with applying the OpenMP pragmas we've been studying
+to a concrete example, the Count Sort algorithm.
 
+You will:
+- Run and time the sequential version of Count Sort on a number of different sizes of inputs
+- Add parallel pragmas to make Count Sort run multithreaded
+- Time the change in performance and compute the speedup as we add parallelism
 
 ## Provided Code
 
-This code has "library" files without `main` functions defined, so that we generate just code for each function to examine.
+This repository has a simple code file containing the code for Count Sort. The
+Makefile specifically includes the OpenMP library so that we can use the pragmas:
+a more complex Makefile used to generate assembly code automatically:
+- `count_sort.c`
+    - Contains the sequential version of the Count Sort algorithm, set up so that
+    we can time the two main parts of the algorithm 
 - `Makefile`
-    - a makefile to automate the compilation process
-- `loops.c`
-    - a C code file for function definitions that implement simple loops
-- `loops_main.C`
-    - a C code file with copies of the functions from `loops.c` but with a
-    `main` function that demonstrates each function
+    - A Makefile that contains extra compiler commands for enabling OpenMP
 
-### Note about Makefile
-
-The Makefile contains targets that produce the `.s` files as we have done before. It also
-contains a target to produce the `.d` files from calling `objdump` on the executable. One
-change is that it **keeps** the executable, so that you can run it and see that it works
-correctly!
+**Note:** While this code is based on the code provided in _Dive into Systems_, it
+has been modified to match the style we've been using more, to simplify it, and
+to fit the OpenMP version of it. 
 
 ## Your Tasks
 
-Before starting the tasks, examine the contents of the C code files and the Makefile. Make sure you understand what both are supposed to do.
+### Task 1: Explore the sequential code
 
-### Task 1: Basic while loops
+- Open `count_sort.c` and read through the code, discussing it with your teammates.
+Make sure you understand what the `main`, `countElems` and `writeArray` do, and how
+they map onto the pseudocode we looked at earlier.
+- Compile and run the program, experimenting with varying the command-line arguments
+    - Hint: Don't set `verbose` to 1 unless you have chosen a small value for the array length
+- Run the same size array multiple times, and note how the times vary from run to run
+- Try switching between the two random seed options on lines 45 and 46
+    - `srand` sets the random number generator "seed" to the value passed to it; by
+    setting that to a constant we can ensure that the same sequence of "random" values
+    is produced each time. Passing it `time(NULL)` ensures a different seed each time,
+    which gives a new sequence of values.
+    - Change between the two, and then run the program several times: does it make any
+    noticable difference in runtime?
+- Set the code to use `srand(10)`, and collect data on the running times for each "phase" of the algorithm, for different sizes of arrays
+    - Repeat for array sizes of 1 million, 10 million, and 100 million (you can try 1 billion, but it will be very slow)
+        - Run the program 5 times, and record the values for Phase 1 and Phase 2 here
+        in the README
+        - Compute the average, min and max time for each array size
 
-- Examine the two functions defined in `loops.c`. One of these is from your reading
-the other is a slightly more complicated example (it multiplies its inputs using
-repeated addition to calculate the product).
+### Task 2: Parallelize `countElems`
 
-- Run `make` and examine the resulting assembly language in `loops.s` for each function. Discuss with your teammates what you see for each example. Make a copy of the `.s` file and add comments as we have done before.
+This was discussed in your reading, so you can go back to refresh your understanding if you like.
 
-- Compare the code generated for `sum_up` in `loops.s` with the code generated for it in `loops_main.d`. Place the code side by side; which parts are the same and which are different, and why? Add your comments here in the README.
+- Note the line in `main` that sets the number of threads based on what the user passed in at the command-line. 
+- Add the line below to the `countElems` function, as the first statement inside the function
 
-- Do the same with `slow_mult`
+`#pragma omp parallel default(none) shared(counts, array_A, length)`
 
-### Task 2: Basic for loops
+This will create the currently specified number of threads, and it sets up the `counts`,
+`array_A`, and `length` variables to be shared data across all threads.
 
-- Create a new function, `sum_up_for`, that uses a for loop instead of a while loop for the `sum_up` task (add this to the `loops.c` and `loops_main.c` files). 
-- Compare the assembly code for this new function against the code generated for
-the original function. How do they differ?
-- Create a new function, `slow_mult_for`, that uses a for loop instead of a while loop for the `slow_mult` task, and compare the results
+- Add curly braces after the `#pragma` line to enclose the entire body of the
+function. This means each thread will compute all of these lines. Enclose the declarations of `val`, `i`, and `local`: these variables will each be private to
+an individual thread, not shared across threads.
 
-### Task 3: Connecting by-hand to running code
+- Add the line below right before the first `for` loop.
 
-- Add the functions from the by-hand portion of the activity
-to the `loops.c` and `loops_main.c` file
-- Work backwards from the third code example to write C code that should generate the assembly code you were given
-- Compare your results with what you wrote before: where were your by-hand answers
-correct or incorrect?
+`#pragma omp for`
 
+This tells the compiler to split up the iterations of the loop across the currently existing threads, in the default way (chunking). Since each iteration of the `for` loop only reads from shared data, and writes only to private data, we don't need to constrain the threads in any way, they can all run concurrently without any race conditions.
 
-### Task 4: More complicated functions
+- Add the line below right before the second `for` loop
 
-Suppose we want a function with the call signature given below:
+`#pragma omp critical`
 
-    int nested_while(int r, int c);
+This tells the compiler that the second `for` loop should be considered a "critical section" of code: it can break up the iterations across the different threads, but only one thread may run the code at one time. This is because `counts` is shared data, and
+we need to ensure that the threads don't interfere with each other!
 
-This function should contain two nested for or while loops. The outer loop should iterate over the values from 0 to `r`, and the inner loop should iterate over the
-values from 0 to `c`. The function should count how many times the inner loop runs
-in all, returning the result
-- Define this function, and add it to the `loops.c` and `loops_main.c` files. 
-- Try to predict what you think the assembly code will look like for this
-- Look at the `loops.s` generated code for this function. Make a copy of the `.s`
-file and add comments to it aligning the lines of assembly with the original C code
+- Compile and run this program. Collect data like you did in the previous task about the running time for the `countElems` phase (on the same set of array sizes, and running five times then computing min, max and average). Record the data here.
 
-Finally, suppose we want a function takes in two inputs:
+- What do you see? Is the parallel version always faster? If so, try smaller array values: does it always do better? If not, when does it change? What does this tell you about the usefulness of parallelizing the code, and how much overhead OpenMP adds?
 
-    int if_and_loop(int n, int d);
+- Compute the speedup and efficiency (see [Section 14.4.1](https://diveintosystems.org/book/C14-SharedMemory/performance_basics.html#_speedup) in _Dive into Systems_) and record the result here.
 
-It should loop over the values from 1 to `n`, and it should add them to a running total if they are divisible by d (if the remainder by d is zero).
+- Experiment with varying other parameters: what if you change the number of threads assigned? How does that affect the running time? Does the efficiency stay constant across different number of threads?
 
-- Define this function and add it to `loops.c` and `loops_main.c`.
-- Try to predict the assembly code before examining what is generated
-- Compare the `loops.s` and `loops_main.d` code for this function with what you predicted. What was the same or different? How close were you to getting the assembly code right?  Add your comments to this README.
+- Try some of the alternatives from our patternlets for allocating iterations of the first `for` loop to threads. Do any of them make any difference?
 
-### Optional Challenge Task: Effects of Optimization
+- Try changing the `#pragma omp critical` command to `#pragma omp for`. What happens then?
 
-In our last activity, we looked at how the code changes if we increase the optimization level. Try generating the optimized assembly for `loops.c` and compare
-it to the unoptimized versions we worked with before. How does it differ?
+### Task 3: Parallelize `writeArray`
+
+- Add the line below right before the `for` loop in `writeArray` (so that `i`, `counts`, and `array_A` are all shared variables).
+
+`#pragma omp parallel for schedule(dynamic)`
+
+This will parallelize the iterations of the outer loop using the dynamic schedule. 
+Remember that the dynamic scheduling assigns each iteration of the `for` loop to the next
+idle thread. The thread could be idle because it has never been assigned to an iteration,
+or because it has already finished its previous iteration.
+
+- Discuss with your teammates, why does this particular schedule make sense for this particular set of for loops? Record your answer here.
+
+- Rerun your previous experiments, recording the running time for `writeArray` on the
+same data sizes (repeating 5 times, etc.). 
+
+- Calculate the speedup and efficiency here.
+
+- Which of the two functions shows better efficiency/speedup?
+
+- What happens if you use the default scheduling on this function? Does it perform worse?
+
+- Suppose we wanted an overall measure of speedup/efficiency for this program, so we
+wanted to combine the data from `countElems` and `writeArray`. Do this just by adding
+up the raw numbers for the two phases (if you have saved data from an earlier run of
+the experiment, you may use it, or else rerun the experiment again!). What is the overall
+speedup and efficiency
+
+- (Optional) Try varying the number of threads again. What number of threads gives you
+the best overall performance?
 
 ## References
 
-- x86-64 jump instruction reference
-    - [Steve Friedl's Intel x86 JUMP quick reference](http://unixwiz.net/techtips/x86-jumps.html)
-- Assembly language resources (x86, 64-bit)
-    - [x86 Assembly/X86 Instructions](http://en.wikibooks.org/wiki/X86_Assembly/X86_Instructions)
-    - [X86 Opcode and Instruction Reference](http://ref.x86asm.net/coder64.html)
-    - [x86 assembly language](http://en.wikipedia.org/wiki/X86_assembly_language)
-    - [x86 instruction listings](http://en.wikipedia.org/wiki/X86_instruction_listings)
-- gcc compiler flag references
-    - [Compiler Option Summary](https://gcc.gnu.org/onlinedocs/gcc/Option-Summary.html)
-    - [Index of gcc compiler options](https://gcc.gnu.org/onlinedocs/gcc/Option-Index.html)
-- `objdump` resources
-    - [Overview of the `objdump` command](https://www.thegeekstuff.com/2012/09/objdump-examples/)
-- Makefile guides
-  - [An Introduction to Makefiles](https://www.gnu.org/software/make/manual/html_node/Introduction.html), by GNU
-  - [Makefile Tutorials and Examples to Build From](https://earthly.dev/blog/make-tutorial/), by Aniket Bhattacharyea
-  - [makefile basics - anthony explains](https://www.youtube.com/watch?v=20GC9mYoFGs)
+- OpenMP Tutorials
+    - [_Dive into Systems_, Section 14.7](https://diveintosystems.org/book/C14-SharedMemory/openmp.html)
+    - [Geeks for Geeks OpenMP Hello World Program](https://www.geeksforgeeks.org/openmp-hello-world-program/)
+    - [IBM Shared and Private Variables in a Parallel Environment](https://www.ibm.com/docs/en/zos/2.2.0?topic=programs-shared-private-variables-in-parallel-environment)
+- Command-line arguments in C
+    - [*Dive into Systems*, Section 2.9.2](https://diveintosystems.org/book/C2-C_depth/advanced_cmd_line_args.html#_c_cmd_line_args_)
+    - [Command-Line Arguments in C/C++, by Geeks for Geeks](https://www.geeksforgeeks.org/command-line-arguments-in-c-cpp/)

@@ -1,4 +1,4 @@
-# Activity 23: OpenMP Application Example
+# Activity 24: OpenMP Application Example
 ## Put your name(s) here
 
 In this activity, you will experiment with applying the OpenMP pragmas we've been studying

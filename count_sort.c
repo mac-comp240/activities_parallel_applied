@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
             print_error("ERROR: length must be greater than 0");
             return 1;
         }
-        if (argc == 3) {
+        if (argc >= 3) {
             nThreads = strtol(argv[2], NULL, 10);
             if (nThreads < 1) {
                 print_error("ERROR: Must have positive number of threads");
